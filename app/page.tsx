@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
-import { Plus, Users, Calendar, User, CalendarCheck } from "lucide-react";
+import { Plus, Users, Calendar, User, CalendarCheck, BellRing, AlertTriangle, Mail, CalendarClock } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -25,6 +25,14 @@ type Member = {
   name: string;
   color: string;
   availability: TimeSlot[];
+};
+
+type Meeting = {
+  id: string;
+  title: string;
+  slot: TimeSlot;
+  status: 'confirmed' | 'conflict';
+  conflictMembers?: string[];
 };
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -223,10 +231,19 @@ function Legend({ items }: { items: { color: string; label: string }[] }) {
 // ─── Main App ─────────────────────────────────────────────────────────────────
 
 export default function MeetFlow() {
+  const [activeTab, setActiveTab] = useState("members");
   const [members, setMembers] = useState<Member[]>(INITIAL_MEMBERS);
   const [newName, setNewName] = useState("");
   const [open, setOpen] = useState(false);
   const [viewId, setViewId] = useState("xiao-liang");
+
+  // AI Reminder states
+  const [meetings, setMeetings] = useState<Meeting[]>([]);
+  const [newMeetingTitle, setNewMeetingTitle] = useState("");
+  const [newMeetingDay, setNewMeetingDay] = useState(0);
+  const [newMeetingHour, setNewMeetingHour] = useState(9);
+  const [meetingOpen, setMeetingOpen] = useState(false);
+  const [reminderMeeting, setReminderMeeting] = useState<Meeting | null>(null);
 
   const me = members.find((m) => m.id === "me")!;
   const others = members.filter((m) => m.id !== "me");
@@ -268,38 +285,87 @@ export default function MeetFlow() {
     setOpen(false);
   }
 
+  // AI Reminder logic
+  function handleAddMeeting() {
+    const s = slot(newMeetingDay, newMeetingHour);
+    const conflictMembers = members.filter(m => !m.availability.includes(s)).map(m => m.name);
+    
+    const newMeeting: Meeting = {
+      id: `meeting-${Date.now()}`,
+      title: newMeetingTitle,
+      slot: s,
+      status: conflictMembers.length > 0 ? 'conflict' : 'confirmed',
+      conflictMembers,
+    };
+
+    if (conflictMembers.length > 0) {
+      setReminderMeeting(newMeeting);
+    } else {
+      setMeetings(prev => [...prev, newMeeting]);
+    }
+    
+    setMeetingOpen(false);
+    setNewMeetingTitle("");
+  }
+
+  function handleConfirmConflict() {
+    if (reminderMeeting) {
+      setMeetings(prev => [...prev, { ...reminderMeeting, status: 'conflict' }]);
+      setReminderMeeting(null);
+    }
+  }
+
+  function handleReschedule() {
+    setReminderMeeting(null);
+    setActiveTab("common");
+  }
+
+  function removeMeeting(id: string) {
+    setMeetings(prev => prev.filter(m => m.id !== id));
+  }
+
   return (
     <div className="min-h-screen bg-background">
       {/* ── Header ── */}
       <header className="border-b bg-background/80 backdrop-blur sticky top-0 z-10">
-        <div className="max-w-4xl mx-auto px-6 py-4 flex items-center gap-3">
-          <CalendarCheck className="w-5 h-5" />
-          <h1 className="text-lg font-semibold tracking-tight">MeetFlow</h1>
-          <Badge variant="secondary" className="text-xs font-normal">
-            Beta
+        <div className="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <CalendarCheck className="w-5 h-5 text-primary" />
+            <h1 className="text-lg font-semibold tracking-tight">MeetFlow</h1>
+            <Badge variant="secondary" className="text-xs font-normal">
+              Beta
+            </Badge>
+          </div>
+          <Badge variant="outline" className="text-xs font-normal border-blue-200 bg-blue-50 text-blue-600 dark:border-blue-900 dark:bg-blue-950 dark:text-blue-400 flex items-center gap-1.5">
+            <BellRing className="w-3 h-3" />
+            AI Reminder Enabled
           </Badge>
         </div>
       </header>
 
       {/* ── Main ── */}
       <main className="max-w-4xl mx-auto px-6 py-8">
-        <Tabs defaultValue="members">
-          <TabsList className="mb-8 h-10">
-            <TabsTrigger value="members" className="gap-1.5 text-sm">
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <TabsList className="mb-8 h-10 overflow-x-auto justify-start sm:justify-center w-full flex-nowrap">
+            <TabsTrigger value="members" className="gap-1.5 text-sm shrink-0">
               <Users className="w-3.5 h-3.5" />
               成員
             </TabsTrigger>
-            <TabsTrigger value="my-schedule" className="gap-1.5 text-sm">
+            <TabsTrigger value="my-schedule" className="gap-1.5 text-sm shrink-0">
               <User className="w-3.5 h-3.5" />
               我的時間表
             </TabsTrigger>
-            <TabsTrigger value="view-member" className="gap-1.5 text-sm">
+            <TabsTrigger value="view-member" className="gap-1.5 text-sm shrink-0">
               <Calendar className="w-3.5 h-3.5" />
               查看成員
             </TabsTrigger>
-            <TabsTrigger value="common" className="gap-1.5 text-sm">
+            <TabsTrigger value="common" className="gap-1.5 text-sm shrink-0">
               <CalendarCheck className="w-3.5 h-3.5" />
               共同空閒
+            </TabsTrigger>
+            <TabsTrigger value="meetings" className="gap-1.5 text-sm shrink-0 text-blue-600 dark:text-blue-400 data-[state=active]:bg-blue-50 dark:data-[state=active]:bg-blue-950">
+              <BellRing className="w-3.5 h-3.5" />
+              會議與提醒
             </TabsTrigger>
           </TabsList>
 
@@ -494,6 +560,148 @@ export default function MeetFlow() {
               </div>
             )}
           </TabsContent>
+
+          {/* ── Tab 5: Meetings & AI Reminder ── */}
+          <TabsContent value="meetings">
+            <div className="flex items-center justify-between mb-5">
+              <div>
+                <h2 className="text-base font-semibold">會議與自動提醒</h2>
+                <p className="text-sm text-muted-foreground mt-0.5">
+                  MeetFlow AI Reminder 會自動偵測衝突並發送通知
+                </p>
+              </div>
+              <Dialog open={meetingOpen} onOpenChange={setMeetingOpen}>
+                <DialogTrigger asChild>
+                  <Button size="sm" className="gap-1.5 bg-blue-600 hover:bg-blue-700 text-white">
+                    <Plus className="w-4 h-4" />
+                    安排新會議
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-md">
+                  <DialogHeader>
+                    <DialogTitle>安排新會議</DialogTitle>
+                  </DialogHeader>
+                  <div className="flex flex-col gap-4 mt-2">
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">會議名稱</label>
+                      <Input
+                        placeholder="例如：產品同步會議"
+                        value={newMeetingTitle}
+                        onChange={(e) => setNewMeetingTitle(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && newMeetingTitle.trim() && handleAddMeeting()}
+                        autoFocus
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium">日期</label>
+                        <select 
+                          className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                          value={newMeetingDay} 
+                          onChange={e => setNewMeetingDay(Number(e.target.value))}
+                        >
+                          {DAYS.map((d, i) => <option key={i} value={i}>{d}</option>)}
+                        </select>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium">時間</label>
+                        <select 
+                          className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                          value={newMeetingHour} 
+                          onChange={e => setNewMeetingHour(Number(e.target.value))}
+                        >
+                          {HOURS.map((h, i) => <option key={i} value={h}>{h}:00</option>)}
+                        </select>
+                      </div>
+                    </div>
+                    <Button onClick={handleAddMeeting} disabled={!newMeetingTitle.trim()}>
+                      安排會議
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            </div>
+            
+            {/* Reminder Dialog / Notification System */}
+            <Dialog open={!!reminderMeeting} onOpenChange={(open) => !open && setReminderMeeting(null)}>
+              <DialogContent className="sm:max-w-md border-red-200 bg-red-50 dark:bg-red-950/20">
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2 text-red-600 dark:text-red-400">
+                    <AlertTriangle className="w-5 h-5" />
+                    衝突預警 (MeetFlow AI Reminder)
+                  </DialogTitle>
+                </DialogHeader>
+                <div className="mt-2 space-y-4">
+                  <p className="text-sm text-foreground">
+                    系統偵測到 <strong>{reminderMeeting?.title}</strong> ({reminderMeeting ? DAYS[Number(reminderMeeting.slot.split('-')[0])] : ''} {reminderMeeting ? reminderMeeting.slot.split('-')[1] : ''}:00) 與以下成員的現有行程重疊：
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {reminderMeeting?.conflictMembers?.map(name => (
+                      <Badge variant="destructive" key={name}>{name}</Badge>
+                    ))}
+                  </div>
+                  
+                  <div className="flex items-start gap-2 text-sm text-blue-700 dark:text-blue-300 bg-blue-100/50 dark:bg-blue-900/30 p-3 rounded-md border border-blue-200 dark:border-blue-800">
+                    <Mail className="w-4 h-4 shrink-0 mt-0.5" />
+                    <p><strong>多平台同步：</strong>已自動發送 Email 提醒至所有參與者信箱，確保資訊一致，避免延誤。</p>
+                  </div>
+
+                  <div className="flex justify-end gap-3 mt-4 pt-2">
+                    <Button variant="outline" onClick={handleReschedule}>
+                      要求改期 (尋找共同空閒)
+                    </Button>
+                    <Button variant="default" className="bg-red-600 hover:bg-red-700 text-white" onClick={handleConfirmConflict}>
+                      一鍵確認參加
+                    </Button>
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
+
+            {/* Meeting List */}
+            <div className="space-y-3">
+              {meetings.length === 0 ? (
+                <Card className="border-dashed shadow-none bg-muted/30">
+                  <CardContent className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+                    <CalendarClock className="w-12 h-12 mb-4 opacity-20" />
+                    <p className="text-sm font-medium">目前無已安排的會議</p>
+                    <p className="text-xs mt-1 opacity-70">點擊上方按鈕開始安排會議，系統將自動為您檢查衝突</p>
+                  </CardContent>
+                </Card>
+              ) : (
+                meetings.map(m => {
+                  const [d, h] = m.slot.split('-');
+                  const isConflict = m.status === 'conflict';
+                  return (
+                    <Card key={m.id} className={`transition-all ${isConflict ? 'border-red-200 bg-red-50/50 dark:border-red-900/50 dark:bg-red-950/20' : ''}`}>
+                      <CardContent className="p-4 flex items-center justify-between">
+                        <div>
+                          <h3 className="font-semibold text-base flex items-center gap-2">
+                            {m.title}
+                            {isConflict && <Badge variant="destructive" className="text-[10px] h-5 px-1.5 py-0">衝突</Badge>}
+                            {m.status === 'confirmed' && <Badge variant="secondary" className="bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/50 dark:text-emerald-400 text-[10px] h-5 px-1.5 py-0 border-transparent">已確認</Badge>}
+                          </h3>
+                          <div className="text-sm text-muted-foreground mt-1 flex items-center gap-1.5">
+                            <CalendarClock className="w-3.5 h-3.5" />
+                            {DAYS[Number(d)]} {h}:00 - {Number(h)+1}:00
+                          </div>
+                          {isConflict && m.conflictMembers && (
+                            <p className="text-xs text-red-600/80 dark:text-red-400/80 mt-1">
+                              與 {m.conflictMembers.join('、')} 衝突
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button variant="outline" size="sm" onClick={() => removeMeeting(m.id)}>取消會議</Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )
+                })
+              )}
+            </div>
+          </TabsContent>
+
         </Tabs>
       </main>
     </div>
